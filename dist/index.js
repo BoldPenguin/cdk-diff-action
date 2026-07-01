@@ -652,15 +652,17 @@ class AssemblyProcessor {
      * Do it in parallel so that we don't stop if one of them fails
      */
     async commentStacks(comments, stageName, stage) {
-        const commentPromises = [];
+        const failed = [];
         for (const [stackName, comment] of Object.entries(stage.stackComments)) {
-            commentPromises.push(this.commentStack(comments, stageName, stackName, comment));
+            try {
+                await this.commentStack(comments, stageName, stackName, comment);
+            } catch (e) {
+                failed.push(e);
+            }
+            // Rate limit: wait 200ms between API calls to avoid GitHub secondary rate limits
+            await new Promise(resolve => setTimeout(resolve, 200));
         }
-        const res = await Promise.allSettled(commentPromises);
-        const failed = res
-            .filter((r) => r.status === 'rejected')
-            .flatMap((r) => r.reason);
-        if (failed && failed.length > 0) {
+        if (failed.length > 0) {
             throw new Error('Error commenting stacks: \n' + failed.join('\n'));
         }
     }
