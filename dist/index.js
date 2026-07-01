@@ -697,6 +697,16 @@ class AssemblyProcessor {
     async commentStages(comments) {
         for (const [stageName, comment] of Object.entries(this.stageComments)) {
             const stageComment = this.getCommentForStage(stageName);
+            if (!stageComment.length) {
+                // No diffs detected for this stage - post a brief "no changes" comment
+                const noChangesComment = [`### Diff for stage: ${stageName}`, '', '✅ No changes detected.'];
+                try {
+                    await this.commentStage(comments, comment.hash, noChangesComment);
+                } catch (e) {
+                    // Ignore errors for no-change comments
+                }
+                continue;
+            }
             try {
                 await this.commentStage(comments, comment.hash, stageComment);
             }
@@ -752,7 +762,6 @@ class AssemblyProcessor {
         const output = [];
         const emoji = this.getEmoji(changes);
         if (diff.isEmpty) {
-            output.push(`No Changes for stack: ${stackName} ${emoji}`);
             return output;
         }
         output.push(...[
