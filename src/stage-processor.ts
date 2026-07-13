@@ -420,12 +420,26 @@ export class AssemblyProcessor {
   private getCommentForStage(stageName: string): string[] {
     const output: string[] = [];
     const stageComments = this.stageComments[stageName];
-    const comments = Object.values(
+    const allStackComments = Object.entries(
       this.stageComments[stageName].stackComments,
-    ).flatMap((x) => x);
-    if (!comments.length) {
+    );
+
+    // Separate stacks with changes from those without
+    const stacksWithChanges: [string, string[]][] = [];
+    const stacksNoChanges: string[] = [];
+    for (const [stackName, comment] of allStackComments) {
+      if (comment.length && !comment.every(c => c.includes('No Changes for stack'))) {
+        stacksWithChanges.push([stackName, comment]);
+      } else {
+        stacksNoChanges.push(stackName);
+      }
+    }
+
+    // If no stacks have changes, return empty
+    if (!stacksWithChanges.length && !stacksNoChanges.length) {
       return output;
     }
+
     if (this.options.title) {
       output.push(`## ${this.options.title}`);
       output.push('');
@@ -438,7 +452,19 @@ export class AssemblyProcessor {
       );
       output.push('');
     }
-    return output.concat(comments);
+
+    // Show summary for no-changes stacks
+    if (stacksNoChanges.length) {
+      output.push(`✅ **${stacksNoChanges.length} stacks with no changes**`);
+      output.push('');
+    }
+
+    // Only include detail for stacks with actual changes
+    for (const [, comment] of stacksWithChanges) {
+      output.push(...comment);
+    }
+
+    return output;
   }
 }
 
