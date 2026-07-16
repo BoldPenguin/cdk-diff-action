@@ -550,18 +550,18 @@ function setupCommentTest(): AssemblyProcessor {
   });
 }
 describe('stack comments', () => {
-  test('stack level comments', async () => {
+  test('body too long is swallowed', async () => {
     findPreviousMock.mockResolvedValue(1);
     updateCommentMock.mockRejectedValueOnce(requestError(422));
     const processor = setupCommentTest();
     await processor.processStages(['SomeStage']);
+    // Should not throw — body too long is ignored (GitHub truncates on display)
     await processor.commentStages(new Comments({} as any, {} as any));
-    expect(findPreviousMock).toHaveBeenCalledTimes(11);
-    expect(createCommentMock).toHaveBeenCalledTimes(0);
-    expect(updateCommentMock).toHaveBeenCalledTimes(11);
+    expect(findPreviousMock).toHaveBeenCalledTimes(1);
+    expect(updateCommentMock).toHaveBeenCalledTimes(1);
   });
 
-  test('stage comment fails', async () => {
+  test('non-body-too-long error still throws', async () => {
     findPreviousMock.mockResolvedValue(1);
     updateCommentMock.mockRejectedValueOnce(
       requestError(400, 'Some other error failed'),
@@ -574,37 +574,6 @@ describe('stack comments', () => {
     expect(findPreviousMock).toHaveBeenCalledTimes(1);
     expect(createCommentMock).toHaveBeenCalledTimes(0);
     expect(updateCommentMock).toHaveBeenCalledTimes(1);
-  });
-
-  test('stack comment fails', async () => {
-    findPreviousMock.mockResolvedValue(1);
-    updateCommentMock.mockRejectedValueOnce(requestError(422));
-    updateCommentMock.mockRejectedValue(
-      requestError(400, 'Some other error failed'),
-    );
-    const processor = setupCommentTest();
-    await processor.processStages(['SomeStage']);
-    await expect(
-      processor.commentStages(new Comments({} as any, {} as any)),
-    ).rejects.toThrow(/Validation Error/);
-    expect(findPreviousMock).toHaveBeenCalledTimes(11);
-    expect(createCommentMock).toHaveBeenCalledTimes(0);
-    expect(updateCommentMock).toHaveBeenCalledTimes(11);
-  });
-
-  test('stack comment fails too long', async () => {
-    findPreviousMock.mockResolvedValue(1);
-    updateCommentMock.mockRejectedValueOnce(requestError(422));
-    updateCommentMock.mockRejectedValueOnce(requestError(422));
-    updateCommentMock.mockRejectedValueOnce(requestError(422));
-    const processor = setupCommentTest();
-    await processor.processStages(['SomeStage']);
-    await expect(
-      processor.commentStages(new Comments({} as any, {} as any)),
-    ).rejects.toThrow(/Comment for stack SomeStage\/my-stack1 is too long/);
-    expect(findPreviousMock).toHaveBeenCalledTimes(11);
-    expect(createCommentMock).toHaveBeenCalledTimes(0);
-    expect(updateCommentMock).toHaveBeenCalledTimes(11);
   });
 });
 

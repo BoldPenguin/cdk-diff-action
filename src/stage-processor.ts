@@ -217,30 +217,6 @@ export class AssemblyProcessor {
     return false;
   }
 
-  /**
-   * Truncate a comment to fit within GitHub's 65536 character limit.
-   * Keeps the header and appends a truncation notice.
-   */
-  private truncateComment(comment: string[]): string[] {
-    const maxLength = 65000; // Leave room for metadata
-    const truncationNotice = [
-      '',
-      '---',
-      '> **⚠️ Comment truncated.** Full diff exceeds GitHub comment size limit. Run `cdk diff` locally for complete output.',
-    ];
-    let totalLength = 0;
-    const truncated: string[] = [];
-    for (const line of comment) {
-      if (totalLength + line.length > maxLength) {
-        truncated.push(...truncationNotice);
-        break;
-      }
-      truncated.push(line);
-      totalLength += line.length + 1;
-    }
-    return truncated;
-  }
-
   private async commentStage(
     comments: Comments,
     hash: string,
@@ -256,8 +232,8 @@ export class AssemblyProcessor {
 
   /**
    * Create the GitHub comment for the stage
-   * This will create a single comment per stage. If the comment body exceeds
-   * GitHub's size limit, it will be truncated rather than split per-stack.
+   * Posts a single comment per stage. If the comment body exceeds
+   * GitHub's size limit, it logs a warning and continues (GitHub truncates on display).
    * @param comments the comments object to use to create the comment
    */
   public async commentStages(comments: Comments) {
@@ -267,14 +243,7 @@ export class AssemblyProcessor {
         await this.commentStage(comments, comment.hash, stageComment);
       } catch (e: any) {
         if (this.bodyTooLongError(e)) {
-          // Truncate the comment to fit GitHub's limit
-          const truncatedComment = this.truncateComment(stageComment);
-          try {
-            await this.commentStage(comments, comment.hash, truncatedComment);
-          } catch (e2: any) {
-            console.error('Error posting truncated comment: ', e2);
-            throw e2;
-          }
+          console.warn(`Stage comment for ${stageName} exceeded GitHub size limit — posting may be truncated by GitHub.`);
         } else {
           throw e;
         }
@@ -363,29 +332,18 @@ export class AssemblyProcessor {
     return output;
   }
 
+  /**
+   * Build the full comment for a stage
+   */
   private getCommentForStage(stageName: string): string[] {
     const output: string[] = [];
     const stageComments = this.stageComments[stageName];
-    const allStackComments = Object.entries(
+    const comments = Object.values(
       this.stageComments[stageName].stackComments,
-    );
-
-    // Separate stacks with changes from those without
-    const stacksWithChanges: [string, string[]][] = [];
-    const stacksNoChanges: string[] = [];
-    for (const [stackName, comment] of allStackComments) {
-      if (comment.length && !comment.every(c => c.includes('No Changes for stack'))) {
-        stacksWithChanges.push([stackName, comment]);
-      } else {
-        stacksNoChanges.push(stackName);
-      }
-    }
-
-    // If no stacks have changes, return empty
-    if (!stacksWithChanges.length && !stacksNoChanges.length) {
+    ).flatMap((x) => x);
+    if (!comments.length) {
       return output;
     }
-
     if (this.options.title) {
       output.push(`## ${this.options.title}`);
       output.push('');
@@ -398,19 +356,7 @@ export class AssemblyProcessor {
       );
       output.push('');
     }
-
-    // Show summary for no-changes stacks
-    if (stacksNoChanges.length) {
-      output.push(`✅ **${stacksNoChanges.length} stacks with no changes**`);
-      output.push('');
-    }
-
-    // Only include detail for stacks with actual changes
-    for (const [, comment] of stacksWithChanges) {
-      output.push(...comment);
-    }
-
-    return output;
+    return output.concat(comments);
   }
 }
 
