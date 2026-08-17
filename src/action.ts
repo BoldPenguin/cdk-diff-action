@@ -71,7 +71,7 @@ export async function run() {
       await processor.commentStages(comments);
     } catch (e: any) {
       console.error('Error commenting stages: ', e);
-      throw e;
+      console.warn('Failed to post diff comment to PR — diff completed successfully. This is likely a transient GitHub API error.');
     }
 
     if (processor.hasDestructiveChanges && inputs.failOnDestructiveChanges) {

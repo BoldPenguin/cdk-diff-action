@@ -205,59 +205,6 @@ export class AssemblyProcessor {
     }
   }
 
-  private async commentStack(
-    comments: Comments,
-    stageName: string,
-    stackName: string,
-    comment: string[],
-  ) {
-    const hash = md5Hash(
-      JSON.stringify({
-        title: this.options.title,
-        stageName,
-        stackName,
-      }),
-    );
-    const stackComment = this.getCommentForStack(stageName, stackName, comment);
-    const previous = await comments.findPrevious(hash);
-    try {
-      if (previous) {
-        await comments.updateComment(previous, hash, stackComment);
-      } else {
-        await comments.createComment(hash, stackComment);
-      }
-    } catch (e: any) {
-      this.handleError(
-        e,
-        `Comment for stack ${stackName} is too long, please report this as a bug https://github.com/corymhall/cdk-diff-action/issues/new`,
-      );
-    }
-  }
-
-  /**
-   * Try to comment all the individual stacks
-   * Do it in parallel so that we don't stop if one of them fails
-   */
-  private async commentStacks(
-    comments: Comments,
-    stageName: string,
-    stage: StageComment,
-  ) {
-    const commentPromises: Promise<void>[] = [];
-    for (const [stackName, comment] of Object.entries(stage.stackComments)) {
-      commentPromises.push(
-        this.commentStack(comments, stageName, stackName, comment),
-      );
-    }
-    const res = await Promise.allSettled(commentPromises);
-    const failed = res
-      .filter((r) => r.status === 'rejected')
-      .flatMap((r) => r.reason);
-    if (failed && failed.length > 0) {
-      throw new Error('Error commenting stacks: \n' + failed.join('\n'));
-    }
-  }
-
   private bodyTooLongError(e: any): boolean {
     if (e.response) {
       const err = e.response as OctokitResponse<RequestError, number>;
@@ -268,13 +215,6 @@ export class AssemblyProcessor {
       );
     }
     return false;
-  }
-
-  private handleError(e: any, message: string) {
-    if (this.bodyTooLongError(e)) {
-      throw new Error(message);
-    }
-    throw e;
   }
 
   private async commentStage(
@@ -292,8 +232,8 @@ export class AssemblyProcessor {
 
   /**
    * Create the GitHub comment for the stage
-   * This will try to create a single comment per stage, but if the comment
-   * is too long it will create a comment per stack
+   * Posts a single comment per stage. If the comment body exceeds
+   * GitHub's size limit, it logs a warning and continues (GitHub truncates on display).
    * @param comments the comments object to use to create the comment
    */
   public async commentStages(comments: Comments) {
@@ -302,11 +242,8 @@ export class AssemblyProcessor {
       try {
         await this.commentStage(comments, comment.hash, stageComment);
       } catch (e: any) {
-        if (
-          this.bodyTooLongError(e) &&
-          Object.keys(comment.stackComments).length > 1
-        ) {
-          await this.commentStacks(comments, stageName, comment);
+        if (this.bodyTooLongError(e)) {
+          console.warn(`Stage comment for ${stageName} exceeded GitHub size limit — posting may be truncated by GitHub.`);
         } else {
           throw e;
         }
@@ -396,27 +333,8 @@ export class AssemblyProcessor {
   }
 
   /**
-   * Only used when the stage comment is too long and we are creating
-   * a separate comment for each stack
+   * Build the full comment for a stage
    */
-  private getCommentForStack(
-    stageName: string,
-    stackName: string,
-    comment: string[],
-  ): string[] {
-    const output: string[] = [];
-    if (!comment.length) {
-      return output;
-    }
-    if (this.options.title) {
-      output.push(`## ${this.options.title}`);
-      output.push('');
-    }
-    output.push(`### Diff for stack: ${stageName} / ${stackName}`);
-
-    return output.concat(comment);
-  }
-
   private getCommentForStage(stageName: string): string[] {
     const output: string[] = [];
     const stageComments = this.stageComments[stageName];

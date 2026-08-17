@@ -114,8 +114,7 @@ const project = new GitHubActionTypeScriptProject({
       },
     },
     runs: {
-      // TODO: update to RunsUsing.NODE_24 after PR https://github.com/projen/projen-github-action-typescript/pull/529 is merged and released
-      using: 'node24' as RunsUsing,
+      using: RunsUsing.NODE_20,
       main: 'dist/index.js',
     },
   },
