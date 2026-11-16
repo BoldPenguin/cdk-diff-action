@@ -43,8 +43,9 @@ interface StageComment {
   destructiveChanges: number;
 
   /**
-   * Stacks without any changes. These are summarized on one line
-   * instead of getting their own section
+   * Stacks without resource changes (including ones that only change
+   * outputs or parameters). These are summarized on one line instead
+   * of getting their own section
    */
   unchangedStacks: string[];
 }
@@ -321,7 +322,12 @@ export class AssemblyProcessor {
   ): string[] {
     const output: string[] = [];
     const emoji = this.getEmoji(changes);
-    if (diff.isEmpty) {
+    const hasResourceChanges =
+      changes.createdResources ||
+      changes.updatedResources ||
+      changes.removedResources ||
+      changes.destructiveChanges.length;
+    if (diff.isEmpty || !hasResourceChanges) {
       return output;
     }
     output.push(
@@ -384,7 +390,7 @@ export class AssemblyProcessor {
     const unchanged = stageComments.unchangedStacks;
     if (unchanged.length) {
       output.push(
-        `<details><summary>${unchanged.length} stack(s) with no changes</summary>`,
+        `<details><summary>${unchanged.length} stack(s) with no resource changes</summary>`,
         '',
         ...unchanged.map((name) => `- ${name}`),
         '',

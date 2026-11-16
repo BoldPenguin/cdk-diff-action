@@ -3,6 +3,7 @@ import path from 'path';
 import * as core from '@actions/core';
 import {
   DifferenceCollection,
+  OutputDifference,
   ResourceDifference,
   ResourceImpact,
   TemplateDiff,
@@ -550,7 +551,10 @@ describe('default stage', () => {
   });
 });
 
-function setupCommentTest(unchangedStacks = 0): AssemblyProcessor {
+function setupCommentTest(
+  unchangedStacks = 0,
+  outputOnlyStacks = 0,
+): AssemblyProcessor {
   const manifestJson = {
     version: '36.0.0',
     artifacts: {},
@@ -581,6 +585,15 @@ function setupCommentTest(unchangedStacks = 0): AssemblyProcessor {
     };
   });
   const templateDiff = createTemplateDiffs(diffInfo);
+  stacks
+    .slice(unchangedStacks, unchangedStacks + outputOnlyStacks)
+    .forEach((stack) => {
+      templateDiff[`SomeStage/${stack.name}`] = new TemplateDiff({
+        outputs: new DifferenceCollection({
+          Out: new OutputDifference({ Value: 'a' }, { Value: 'b' }),
+        }),
+      });
+    });
   mock({
     'cdk.out': mockOutDir,
     node_modules: mock.load(path.join(__dirname, '..', 'node_modules')),
@@ -605,10 +618,24 @@ describe('stack comments', () => {
     await processor.commentStages(new Comments({} as any, {} as any));
     const body: string[] = createCommentMock.mock.calls[0][1];
     expect(body).toContain(
-      '<details><summary>2 stack(s) with no changes</summary>',
+      '<details><summary>2 stack(s) with no resource changes</summary>',
     );
     expect(body).toContain('- SomeStage/my-stack0');
     expect(body).toContain('- SomeStage/my-stack1');
+    expect(body.join('\n')).not.toContain(
+      'Diff for stack: SomeStage/my-stack0',
+    );
+    expect(body.join('\n')).toContain('Diff for stack: SomeStage/my-stack2');
+  });
+
+  test('stacks with only output changes are summarized', async () => {
+    const processor = setupCommentTest(0, 2);
+    await processor.processStages();
+    await processor.commentStages(new Comments({} as any, {} as any));
+    const body: string[] = createCommentMock.mock.calls[0][1];
+    expect(body).toContain(
+      '<details><summary>2 stack(s) with no resource changes</summary>',
+    );
     expect(body.join('\n')).not.toContain(
       'Diff for stack: SomeStage/my-stack0',
     );
