@@ -41,6 +41,12 @@ interface StageComment {
    * The number of destructive changes in this stage
    */
   destructiveChanges: number;
+
+  /**
+   * Stacks without any changes. These are summarized on one line
+   * instead of getting their own section
+   */
+  unchangedStacks: string[];
 }
 
 export interface AssemblyProcessorOptions
@@ -100,6 +106,7 @@ export class AssemblyProcessor {
       this.stageComments[stage.name] = {
         title: this.options.title,
         destructiveChanges: 0,
+        unchangedStacks: [],
         stackComments: stage.stacks.reduce(
           (prev, curr) => {
             prev[curr.name] = [];
@@ -191,9 +198,15 @@ export class AssemblyProcessor {
           debug(
             `Diff for stack ${stack.stackName}: ${JSON.stringify(comment, null, 2)}`,
           );
-          this.stageComments[stage.name].stackComments[stack.stackName].push(
-            ...comment,
-          );
+          if (comment.length) {
+            this.stageComments[stage.name].stackComments[stack.stackName].push(
+              ...comment,
+            );
+          } else {
+            this.stageComments[stage.name].unchangedStacks.push(
+              stack.stackName,
+            );
+          }
           if (!ignoreDestructiveChanges.includes(stage.name)) {
             this.stageComments[stage.name].destructiveChanges += changes;
           }
@@ -221,26 +234,37 @@ export class AssemblyProcessor {
     comments: Comments,
     hash: string,
     comment: string[],
+    hasChanges: boolean,
   ) {
     const previous = await comments.findPrevious(hash);
     if (previous) {
       await comments.updateComment(previous, hash, comment);
-    } else {
+    } else if (hasChanges) {
       await comments.createComment(hash, comment);
     }
   }
 
   /**
    * Create the GitHub comment for the stage
-   * Posts a single comment per stage. If the comment body exceeds
+   * Posts a single comment per stage, but never creates one for a stage
+   * without changes (new comments send notification emails; an existing
+   * comment is updated to say there are no changes). If the comment body exceeds
    * GitHub's size limit, it logs a warning and continues (GitHub truncates on display).
    * @param comments the comments object to use to create the comment
    */
   public async commentStages(comments: Comments) {
     for (const [stageName, comment] of Object.entries(this.stageComments)) {
       const stageComment = this.getCommentForStage(stageName);
+      const hasChanges = Object.values(comment.stackComments).some(
+        (c) => c.length,
+      );
       try {
-        await this.commentStage(comments, comment.hash, stageComment);
+        await this.commentStage(
+          comments,
+          comment.hash,
+          stageComment,
+          hasChanges,
+        );
       } catch (e: any) {
         if (this.bodyTooLongError(e)) {
           console.warn(`Stage comment for ${stageName} exceeded GitHub size limit — posting may be truncated by GitHub.`);
@@ -298,7 +322,6 @@ export class AssemblyProcessor {
     const output: string[] = [];
     const emoji = this.getEmoji(changes);
     if (diff.isEmpty) {
-      output.push(`No Changes for stack: ${stackName} ${emoji}`);
       return output;
     }
     output.push(
@@ -341,14 +364,15 @@ export class AssemblyProcessor {
     const comments = Object.values(
       this.stageComments[stageName].stackComments,
     ).flatMap((x) => x);
-    if (!comments.length) {
-      return output;
-    }
     if (this.options.title) {
       output.push(`## ${this.options.title}`);
       output.push('');
     }
     output.push(`### Diff for stage: ${stageName}`);
+    if (!comments.length) {
+      output.push('No changes');
+      return output;
+    }
 
     if (stageComments.destructiveChanges) {
       output.push(
@@ -356,7 +380,18 @@ export class AssemblyProcessor {
       );
       output.push('');
     }
-    return output.concat(comments);
+    output.push(...comments);
+    const unchanged = stageComments.unchangedStacks;
+    if (unchanged.length) {
+      output.push(
+        `<details><summary>${unchanged.length} stack(s) with no changes</summary>`,
+        '',
+        ...unchanged.map((name) => `- ${name}`),
+        '',
+        '</details>',
+      );
+    }
+    return output;
   }
 }
 

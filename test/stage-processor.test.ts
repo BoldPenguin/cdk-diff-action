@@ -89,7 +89,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.restore();
-  findPreviousMock.mockClear();
+  findPreviousMock.mockReset();
   updateCommentMock.mockClear();
   createCommentMock.mockClear();
 });
@@ -128,8 +128,60 @@ describe('StageProcessor', () => {
     expect(p).toEqual({
       SomeStage: expect.any(Object),
     });
-    expect(p.SomeStage.stackComments['SomeStage/test-stack']).toEqual([
-      'No Changes for stack: SomeStage/test-stack :white_check_mark:',
+    expect(p.SomeStage.stackComments['SomeStage/test-stack']).toEqual([]);
+    expect(p.SomeStage.unchangedStacks).toEqual(['SomeStage/test-stack']);
+  });
+
+  test('stage with no diffs does not create a comment', async () => {
+    mock({
+      'cdk.out': mockOutDir,
+      node_modules: mock.load(path.join(__dirname, '..', 'node_modules')),
+    });
+    const processor = new AssemblyProcessor({
+      defaultStageDisplayName: 'DefaultStage',
+      toolkit,
+      allowedDestroyTypes: [],
+      cdkOutDir: 'cdk.out',
+      diffMethod: DiffMethod.LocalFile(
+        'cdk.out/SomeStage-test-stack.template.json',
+      ),
+      failOnDestructiveChanges: true,
+      stackSelectorPatterns: [],
+      stackSelectionStrategy: 'all-stacks',
+      noFailOnDestructiveChanges: [],
+    });
+    findPreviousMock.mockResolvedValue(undefined);
+    await processor.processStages();
+    await processor.commentStages(new Comments({} as any, {} as any));
+    expect(createCommentMock).toHaveBeenCalledTimes(0);
+    expect(updateCommentMock).toHaveBeenCalledTimes(0);
+  });
+
+  test('stage with no diffs updates an existing comment', async () => {
+    mock({
+      'cdk.out': mockOutDir,
+      node_modules: mock.load(path.join(__dirname, '..', 'node_modules')),
+    });
+    const processor = new AssemblyProcessor({
+      defaultStageDisplayName: 'DefaultStage',
+      toolkit,
+      allowedDestroyTypes: [],
+      cdkOutDir: 'cdk.out',
+      diffMethod: DiffMethod.LocalFile(
+        'cdk.out/SomeStage-test-stack.template.json',
+      ),
+      failOnDestructiveChanges: true,
+      stackSelectorPatterns: [],
+      stackSelectionStrategy: 'all-stacks',
+      noFailOnDestructiveChanges: [],
+    });
+    findPreviousMock.mockResolvedValue(1);
+    await processor.processStages();
+    await processor.commentStages(new Comments({} as any, {} as any));
+    expect(createCommentMock).toHaveBeenCalledTimes(0);
+    expect(updateCommentMock).toHaveBeenCalledWith(1, expect.any(String), [
+      '### Diff for stage: SomeStage',
+      'No changes',
     ]);
   });
 
@@ -465,9 +517,8 @@ describe('default stage', () => {
     expect(p).toEqual({
       DefaultStage: expect.any(Object),
     });
-    expect(p.DefaultStage.stackComments['test-stack']).toEqual([
-      'No Changes for stack: test-stack :white_check_mark:',
-    ]);
+    expect(p.DefaultStage.stackComments['test-stack']).toEqual([]);
+    expect(p.DefaultStage.unchangedStacks).toEqual(['test-stack']);
   });
 
   test('with custom', async () => {
@@ -495,13 +546,11 @@ describe('default stage', () => {
       MyStage: expect.any(Object),
     });
     expect(p.MyStage.title).toEqual('Diff for MyStage');
-    expect(p.MyStage.stackComments['test-stack']).toEqual([
-      'No Changes for stack: test-stack :white_check_mark:',
-    ]);
+    expect(p.MyStage.stackComments['test-stack']).toEqual([]);
   });
 });
 
-function setupCommentTest(): AssemblyProcessor {
+function setupCommentTest(unchangedStacks = 0): AssemblyProcessor {
   const manifestJson = {
     version: '36.0.0',
     artifacts: {},
@@ -525,10 +574,10 @@ function setupCommentTest(): AssemblyProcessor {
   mockOutDir['assembly-SomeStage']['manifest.json'] =
     JSON.stringify(manifestJson);
   const diffInfo: { [stackName: string]: DiffInfo } = {};
-  stacks.forEach((stack) => {
+  stacks.forEach((stack, i) => {
     diffInfo[`SomeStage/${stack.name}`] = {
       oldValue: 'MyCustomName',
-      newValue: 'NewCustomName',
+      newValue: i < unchangedStacks ? 'MyCustomName' : 'NewCustomName',
     };
   });
   const templateDiff = createTemplateDiffs(diffInfo);
@@ -550,6 +599,22 @@ function setupCommentTest(): AssemblyProcessor {
   });
 }
 describe('stack comments', () => {
+  test('stacks without changes are summarized on one block', async () => {
+    const processor = setupCommentTest(2);
+    await processor.processStages();
+    await processor.commentStages(new Comments({} as any, {} as any));
+    const body: string[] = createCommentMock.mock.calls[0][1];
+    expect(body).toContain(
+      '<details><summary>2 stack(s) with no changes</summary>',
+    );
+    expect(body).toContain('- SomeStage/my-stack0');
+    expect(body).toContain('- SomeStage/my-stack1');
+    expect(body.join('\n')).not.toContain(
+      'Diff for stack: SomeStage/my-stack0',
+    );
+    expect(body.join('\n')).toContain('Diff for stack: SomeStage/my-stack2');
+  });
+
   test('body too long is swallowed', async () => {
     findPreviousMock.mockResolvedValue(1);
     updateCommentMock.mockRejectedValueOnce(requestError(422));

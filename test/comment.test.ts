@@ -8,10 +8,11 @@ jest.spyOn(core, 'debug').mockImplementation(() => {});
 const createComment = jest.fn();
 const updateComment = jest.fn();
 const listComments = jest.fn();
+const paginate = jest.fn();
 const issues = { createComment, updateComment, listComments };
 
 const rest = { issues };
-const octokit = { rest } as unknown as InstanceType<typeof GitHub>;
+const octokit = { rest, paginate } as unknown as InstanceType<typeof GitHub>;
 let timestamp = '';
 
 const context: Context = {
@@ -74,21 +75,32 @@ beforeEach(() => {
 
 describe('comments', () => {
   test('found previous comment with hash', async () => {
-    listComments.mockResolvedValue(commentDataWithTag);
+    paginate.mockResolvedValue(commentDataWithTag.data);
     const comments = new Comments(octokit, context);
     await expect(comments.findPrevious(hash)).resolves.toEqual(2);
   });
 
   test('found previous comment with different hash', async () => {
-    listComments.mockResolvedValue(commentDataWithUnMatchedTag);
+    paginate.mockResolvedValue(commentDataWithUnMatchedTag.data);
     const comments = new Comments(octokit, context);
     await expect(comments.findPrevious(hash)).resolves.toBeUndefined();
   });
 
   test('no comments', async () => {
-    listComments.mockResolvedValue({ data: [] });
+    paginate.mockResolvedValue([]);
     const comments = new Comments(octokit, context);
     await expect(comments.findPrevious(hash)).resolves.toBeUndefined();
+  });
+
+  test('searches all pages of comments', async () => {
+    paginate.mockResolvedValue([]);
+    const comments = new Comments(octokit, context);
+    await comments.findPrevious(hash);
+    expect(paginate).toHaveBeenCalledWith(listComments, {
+      ...context.repo,
+      issue_number: 1,
+      per_page: 100,
+    });
   });
 
   test('update comment', async () => {

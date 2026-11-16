@@ -6,7 +6,8 @@ GitHub action to comment on PRs with the stack diff.
 
 ## :sparkles: Features
 
-- :speech_balloon: Create a single comment per CDK stage
+- :speech_balloon: Create a single comment per CDK stage with changes (stages
+  without changes get no new comment, so no notification email)
 - :recycle: Updates the same comment on each commit, reducing clutter
 - :bangbang: Calls out any destructive changes to resources
 - :x: Fail workflow if there are destructive changes

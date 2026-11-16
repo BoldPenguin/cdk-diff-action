@@ -27,11 +27,15 @@ export class Comments {
    * @returns the PR comment id or undefined if there is no previous comment
    */
   public async findPrevious(hash: string): Promise<number | undefined> {
-    const comments = await this.octokit.rest.issues.listComments({
-      ...this.context.repo,
-      issue_number: this.issueNumber,
-    });
-    return comments.data.find((comment) => comment.body?.includes(hash))?.id;
+    const comments = await this.octokit.paginate(
+      this.octokit.rest.issues.listComments,
+      {
+        ...this.context.repo,
+        issue_number: this.issueNumber,
+        per_page: 100,
+      },
+    );
+    return comments.find((comment) => comment.body?.includes(hash))?.id;
   }
 
   /**
