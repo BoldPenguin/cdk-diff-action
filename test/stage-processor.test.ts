@@ -612,16 +612,12 @@ function setupCommentTest(
   });
 }
 describe('stack comments', () => {
-  test('stacks without changes are summarized on one block', async () => {
+  test('stacks without changes are summarized on one line', async () => {
     const processor = setupCommentTest(2);
     await processor.processStages();
     await processor.commentStages(new Comments({} as any, {} as any));
     const body: string[] = createCommentMock.mock.calls[0][1];
-    expect(body).toContain(
-      '<details><summary>2 stack(s) with no resource changes</summary>',
-    );
-    expect(body).toContain('- SomeStage/my-stack0');
-    expect(body).toContain('- SomeStage/my-stack1');
+    expect(body).toContain('_2 stack(s) with no resource changes_');
     expect(body.join('\n')).not.toContain(
       'Diff for stack: SomeStage/my-stack0',
     );
@@ -633,9 +629,7 @@ describe('stack comments', () => {
     await processor.processStages();
     await processor.commentStages(new Comments({} as any, {} as any));
     const body: string[] = createCommentMock.mock.calls[0][1];
-    expect(body).toContain(
-      '<details><summary>2 stack(s) with no resource changes</summary>',
-    );
+    expect(body).toContain('_2 stack(s) with no resource changes_');
     expect(body.join('\n')).not.toContain(
       'Diff for stack: SomeStage/my-stack0',
     );

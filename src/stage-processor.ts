@@ -389,13 +389,7 @@ export class AssemblyProcessor {
     output.push(...comments);
     const unchanged = stageComments.unchangedStacks;
     if (unchanged.length) {
-      output.push(
-        `<details><summary>${unchanged.length} stack(s) with no resource changes</summary>`,
-        '',
-        ...unchanged.map((name) => `- ${name}`),
-        '',
-        '</details>',
-      );
+      output.push(`_${unchanged.length} stack(s) with no resource changes_`);
     }
     return output;
   }
